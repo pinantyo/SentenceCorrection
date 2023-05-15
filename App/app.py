@@ -6,6 +6,7 @@ import os, json
 # Model
 # from simpletransformers.t5 import T5Model, T5Args
 from transformers import T5Tokenizer, T5ForConditionalGeneration
+from simpletransformers.t5 import T5Model
 
 
 # Data Processing
@@ -14,69 +15,87 @@ from sklearn.model_selection import train_test_split
 
 # Data Management
 class Data:
-	def __init__(self, path):
-		self.data = pd.read_csv(
+	@st.cache_data
+	def __init__(self, path, subset: list):
+		self.__data = pd.read_csv(
 			path,
-			encoding='utf-8'
-		)
+			encoding='utf-8',
+		)[subset]
 
 
 	def reformat_data(self, mode: str):
-		if mode in self.data.columns:
+		if mode in self.__data.columns:
 			return 'column existed'
 
 		mode = pd.DataFrame({
-			'prefix':[mode]*self.data.shape[0]
+			'prefix':[mode]*self.__data.shape[0]
 		})
 
-		self.data = pd.concat(
-			mode,
-			self.data,
+		temp = pd.concat(
+			[mode,
+			self.__data],
 			ignore_index=True
 		)
 
-		self.data.reset_index(inplace=True)
-
-		self.data = self.data[['prefix','input_text','target_text']]
+		self.__data = temp
+		self.__data.reset_index(inplace=True, drop=True)
+		self.__data.columns = ['prefix','input_text','target_text']
 
 
 	def preprocessing_null_duplication(self, subset: list):
 		# Null Values
-		self.data.dropna(
-			subset = subset,
+		self.__data.dropna(
 			inplace = True
 		)
 
 		# Drop Duplication
-		duplication = self.data.duplicated(subset=subset).sum()
+		duplication = self.__data.duplicated(subset=subset).sum()
 
 		if duplication:
-			self.data.drop_duplicates(
+			self.__data.drop_duplicates(
 				subset=subset,
 				inplace=True,
 				ignore_index=True,
 			)
 
+	def get_data(self):
+		return self.__data
+
 
 # Models
 class Model:
-	def __init__(self, path):
-		self.tokenizer = T5Tokenizer.from_pretrained(path)
-		self.model = T5ForConditionalGeneration.from_pretrained(path)
+	@st.cache_data
+	def __init__(self, path: str, train: bool=False, args: dict={}, cuda: bool = False):
+		if train:
+			self.__model = T5Model(
+				"t5",
+				path,   
+				args=args,
+				use_cuda=cuda
+			)
+		
+		else:
+			self.__tokenizer = T5Tokenizer.from_pretrained(path)
+			self.__model = T5ForConditionalGeneration.from_pretrained(path)
 
-	def train(self, args: dict):
+	def train(self, train_data, eval_data):
+		st.write(self.__model.train_model(
+			train_data.applymap(str), 
+			eval_data=eval_data.applymap(str)
+		))
 
-		return "Comming soon!"
+		# Model - Evaluation
+		return self.__model.eval_model(eval_data)
 
 	def predict(self, original_text):
-		inputs = self.tokenizer(
+		inputs = self.__tokenizer(
 			f'informal converter: {original_text}',
 			return_tensors="pt"
 		).input_ids
 
-		output = self.model.generate(inputs)
+		output = self.__model.generate(inputs)
 
-		return self.tokenizer.decode(
+		return self.__tokenizer.decode(
 			output[0],
 			skip_special_tokens=True
 		)
@@ -84,6 +103,10 @@ class Model:
 
 
 if __name__ == '__main__':
+	# Session state
+	if "load_state" not in st.session_state:
+		st.session_state.load_state = False
+
 	# Init global variable
 	model = None
 	file = None
@@ -98,12 +121,15 @@ if __name__ == '__main__':
 
 	# Sidebar
 	with st.sidebar:
+		st.header("Import Files")
 		file = st.file_uploader("Upload CSV file required")
 		
 	with st.container():
 
 		with tab_master1:
 			st.header("Modelling")
+
+			# Select Models
 			option = os.path.join(MODEL_PATH, st.selectbox(
 				'Choose machine learning model',
 				set(
@@ -111,42 +137,48 @@ if __name__ == '__main__':
 				)
 			))
 
-			if st.button('Init Model'):
-				# Init model
-				model = Model(option)
-				st.write(
-					f"Model {option} loaded."
-				)
 
-			
-			
-
-
+			# Section Training/Testing
 			tabs1, tabs2 = st.tabs(["Train/Validation", "Test"])
-
-			
-
 			with tabs1:
-				# Select Models
-				st.header("Training - Comming Soon")
+				st.header("Training")
 
-				col1, col2 = st.columns(2)
+				# Import JSON Model Args
+				json_args = st.file_uploader('Upload JSON file required', type=['json'], key="json_model_args")
 
-				with col1:
-					json_file = st.file_uploader('Import model args json')
+				if json_args:
+					json_args = [json.loads(i) for i in json_args]
+					st.json(json_args)
+				
+					# Init Model
+					model = Model(
+						option,
+						train=True,
+						args=json_args,
+						cuda=True
+					)
 
-					if json_file:
-						with open(json_file, 'r') as f:
-							json_args = json.load(f)
+					# Train Model
+					# evaluation = model.train()
+					# st.write(
+					# 	evaluation
+					# )
 
-						st.write("Model Arguements: ", str(json_args))
 			
 
 			with tabs2:
 				st.header("Testing")
+
+				# Input informal text
 				txt = st.text_area('Input informal text for conversion')
 
-				if st.button('Convert'):
+				if not model:
+					model = Model(option)
+
+				# Call model 
+				if st.button('Convert') or st.session_state.load_state:
+					st.session_state.load_state = True
+					
 					st.write(
 						'Converter:', 
 						model.predict(txt)
@@ -156,15 +188,27 @@ if __name__ == '__main__':
 		with tab_master2:
 			st.header("Data Processing")
 
-			# Display file's content
+			# Import Data for Training & Testing
+			file = st.file_uploader("Upload CSV file", type=['csv'], key="csv_training")
+
+			# Data Preprocessing & Splitting
 			if file:
-				df = pd.read_csv(
-					file,
-					encoding='utf-8'
+				df = Data(
+					file, 
+					["Kalimat","Formal Sentences"]
 				)
 
-				st.write(
-					df
+				df.preprocessing_null_duplication(["Kalimat"])
+				df.reformat_data("informal converter")
+				df = df.get_data()
+
+				st.dataframe(df)
+
+				train_df, eval_df = train_test_split(
+					df,
+					test_size=0.2,
+					random_state=1000,
+					shuffle=True
 				)
 
 			
