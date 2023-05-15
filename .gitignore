@@ -1,1 +1,4 @@
 Dummy
+App/App/App
+App/*
+!App/*.py
