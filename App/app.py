@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from decouple import config
+import os, json
 
 # Model
 # from simpletransformers.t5 import T5Model, T5Args
@@ -11,8 +12,7 @@ from transformers import T5Tokenizer, T5ForConditionalGeneration
 from sklearn.model_selection import train_test_split
 
 
-
-
+# Data Management
 class Data:
 	def __init__(self, path):
 		self.data = pd.read_csv(
@@ -58,7 +58,7 @@ class Data:
 			)
 
 
-
+# Models
 class Model:
 	def __init__(self, path):
 		self.tokenizer = T5Tokenizer.from_pretrained(path)
@@ -84,14 +84,87 @@ class Model:
 
 
 if __name__ == '__main__':
+	# Init global variable
+	model = None
+	file = None
+
+	st.header("Frasakan")
 	MODEL_PATH = config('MODEL_PATH')
 
 
 
-	txt = st.text_area('Input informal text for conversion')
+	tab_master1, tab_master2 = st.tabs(["Modelling", "Data Processing"])
 
-	if st.button('Convert'):
-		st.write(
-			'Converter:', 
-			Model(MODEL_PATH).predict(txt)
-		)
+
+	# Sidebar
+	with st.sidebar:
+		file = st.file_uploader("Upload CSV file required")
+		
+	with st.container():
+
+		with tab_master1:
+			st.header("Modelling")
+			option = os.path.join(MODEL_PATH, st.selectbox(
+				'Choose machine learning model',
+				set(
+					os.listdir(MODEL_PATH)
+				)
+			))
+
+			if st.button('Init Model'):
+				# Init model
+				model = Model(option)
+				st.write(
+					f"Model {option} loaded."
+				)
+
+			
+			
+
+
+			tabs1, tabs2 = st.tabs(["Train/Validation", "Test"])
+
+			
+
+			with tabs1:
+				# Select Models
+				st.header("Training - Comming Soon")
+
+				col1, col2 = st.columns(2)
+
+				with col1:
+					json_file = st.file_uploader('Import model args json')
+
+					if json_file:
+						with open(json_file, 'r') as f:
+							json_args = json.load(f)
+
+						st.write("Model Arguements: ", str(json_args))
+			
+
+			with tabs2:
+				st.header("Testing")
+				txt = st.text_area('Input informal text for conversion')
+
+				if st.button('Convert'):
+					st.write(
+						'Converter:', 
+						model.predict(txt)
+					)
+		
+
+		with tab_master2:
+			st.header("Data Processing")
+
+			# Display file's content
+			if file:
+				df = pd.read_csv(
+					file,
+					encoding='utf-8'
+				)
+
+				st.write(
+					df
+				)
+
+			
