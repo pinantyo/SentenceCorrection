@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+from decouple import config
 
 # Model
 # from simpletransformers.t5 import T5Model, T5Args
@@ -8,6 +9,7 @@ from transformers import T5Tokenizer, T5ForConditionalGeneration
 
 # Data Processing
 from sklearn.model_selection import train_test_split
+
 
 
 
@@ -38,7 +40,7 @@ class Data:
 		self.data = self.data[['prefix','input_text','target_text']]
 
 
-	def preprocessing_null_duplication(self, subset: List):
+	def preprocessing_null_duplication(self, subset: list):
 		# Null Values
 		self.data.dropna(
 			subset = subset,
@@ -57,15 +59,13 @@ class Data:
 
 
 
-
-
-
 class Model:
 	def __init__(self, path):
 		self.tokenizer = T5Tokenizer.from_pretrained(path)
 		self.model = T5ForConditionalGeneration.from_pretrained(path)
 
-	def train(self):
+	def train(self, args: dict):
+
 		return "Comming soon!"
 
 	def predict(self, original_text):
@@ -76,7 +76,7 @@ class Model:
 
 		output = self.model.generate(inputs)
 
-		return tokenizer.decode(
+		return self.tokenizer.decode(
 			output[0],
 			skip_special_tokens=True
 		)
@@ -84,6 +84,14 @@ class Model:
 
 
 if __name__ == '__main__':
+	MODEL_PATH = config('MODEL_PATH')
+
+
 
 	txt = st.text_area('Input informal text for conversion')
-	st.write('Converter:', Model(path).predict(txt))
+
+	if st.button('Convert'):
+		st.write(
+			'Converter:', 
+			Model(MODEL_PATH).predict(txt)
+		)
