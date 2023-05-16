@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 from decouple import config
-import os, json
+import os, json, ast
 
 # Model
 # from simpletransformers.t5 import T5Model, T5Args
@@ -44,17 +44,14 @@ class Data:
 
 	def preprocessing_null_duplication(self, subset: list):
 		# Null Values
-		self.__data.dropna(
-			inplace = True
-		)
+		self.__data = self.__data.dropna()
 
 		# Drop Duplication
 		duplication = self.__data.duplicated(subset=subset).sum()
 
 		if duplication:
-			self.__data.drop_duplicates(
+			self.__data = self.__data.drop_duplicates(
 				subset=subset,
-				inplace=True,
 				ignore_index=True,
 			)
 
@@ -115,6 +112,7 @@ if __name__ == '__main__':
 	
 	if "model_state" not in st.session_state:
 		st.session_state.model_state = False
+		st.session_state.model_name = False
 
 
 	st.header("Frasakan")
@@ -145,26 +143,43 @@ if __name__ == '__main__':
 				st.header("Training")
 
 				# Import JSON Model Args
-				json_args = st.file_uploader('Upload JSON file required', type=['json'], key="json_model_args")
+				json_args = json_args = os.path.join(
+					option,
+					"model_args.json"
+				)
 
 				if json_args:
-					json_args = [json.loads(i) for i in json_args]
-					st.json(json_args)
+					with open(json_args, 'r') as f:
+						json_args = st.text_area('Model Args' ,str(json.load(f)))
+						json_args = ast.literal_eval(f"{json_args}")
 				
-					# Init Model
-					if not st.session_state.model_state:
-						st.session_state.model_state = model = Model(
+
+				st.json(ast.literal_eval(f"{json_args}"))
+				
+			
+				if st.button("Train"):
+					# Train Model
+
+					if "data_state" in st.session_state:
+						# Init Model
+						model = Model(
 							option,
 							train=True,
-							args=json_args,
-							cuda=True
+							args=ast.literal_eval(f"{json_args}"),
+							cuda=False
 						)
 
-						# Train Model
-						# evaluation = model.train()
-						# st.write(
-						# 	evaluation
-						# )
+						model.train(
+							st.session_state.data_state[0], 
+							eval_data=st.session_state.data_state[1]
+						)
+
+						st.write(
+							f"ModelEvaluation: {model.eval_model(st.session_state.data_state[1])}"
+						)
+
+					else:
+						st.warning('Data Not Found', icon="⚠️")
 
 			
 
@@ -174,73 +189,72 @@ if __name__ == '__main__':
 				# Input informal text
 				txt = st.text_area('Input informal text for conversion')
 
-				if not st.session_state.model_state:
+				if ("model_state" not in st.session_state) or (st.session_state.model_name != option):
+					st.session_state.model_name = option
 					st.session_state.model_state = Model(option)
 
 				# Call model 
 				if st.button('Convert') or st.session_state.load_state:
 					st.session_state.load_state = True
 
-					if model:
-						st.write(
-							'Converter:', 
-							st.session_state.model_state.predict(txt)
-						)
-					
-					st.warning('Model is not initiated', icon="⚠️")
 		
+					st.write(
+						'Converter:', 
+						st.session_state.model_state.predict(txt)
+					)
+			
 
-		with tab_master2:
-			st.header("Data Processing")
+			with tab_master2:
+				st.header("Data Processing")
 
-			# Import Data for Training & Testing
-			file = st.file_uploader("Upload CSV file", type=['csv'], key="csv_training")
+				# Import Data for Training & Testing
+				file = st.file_uploader("Upload CSV file", type=['csv'], key="csv_training")
 
-			# Data Preprocessing & Splitting
-			if file:
-				df = Data(
-					file, 
-					["Kalimat","Formal Sentences"]
-				)
-
-				st.write(f"Dataframe Columns: {df.get_columns()}")
-
-				# Request for subset of cols for duplication drop
-				preps = st.checkbox("Duplication Drop ", key="preps")
-				if "preps" in st.session_state:
-					cols = st.text_input(
-						"Input columns ends with ',' e.g. Kalimat,Formal Sentences",
-						key="subset_cols"
+				# Data Preprocessing & Splitting
+				if file:
+					df = Data(
+						file, 
+						["Kalimat","Formal Sentences"]
 					)
 
-					if "subset_cols" in st.session_state:
-						df.preprocessing_null_duplication(cols.split(','))
+					st.write(f"Dataframe Columns: {df.get_columns()}")
+
+					# Request for subset of cols for duplication drop
+					preps = st.checkbox("Duplication Drop ", key="preps")
+					if "preps" in st.session_state:
+						cols = st.text_input(
+							"Input columns ends with ',' e.g. Kalimat,Formal Sentences",
+							key="subset_cols"
+						)
+
+						if "subset_cols" in st.session_state:
+							df.preprocessing_null_duplication(cols.split(','))
+					
+					# Output shape
+					st.write(f"Data dimension: {df.get_shape()}")
+					st.write(f"Null & Duplication Deletion: {df.get_shape()}")
+
+					df.reformat_data("informal converter")
+					df = df.get_data()
+
+					st.dataframe(df)
+
+
+					test_size = st.slider('Test Size: ', 0, 100, 1) / 100
+
+
+					train_df, eval_df = train_test_split(
+						df,
+						test_size=test_size,
+						random_state=1000,
+						shuffle=True
+					)
+
+					st.write(f"Train Data: {train_df.shape} | Validation Data: {eval_df.shape}")
+
+
+					st.session_state.data_state = [train_df, eval_df]
+
+
+
 				
-				# Output shape
-				st.write(f"Data dimension: {df.get_shape()}")
-				st.write(f"Null & Duplication Deletion: {df.get_shape()}")
-
-				df.reformat_data("informal converter")
-				df = df.get_data()
-
-				st.dataframe(df)
-
-
-				test_size = st.slider('Test Size: ', 0, 100, 1) / 100
-
-
-				train_df, eval_df = train_test_split(
-					df,
-					test_size=test_size,
-					random_state=1000,
-					shuffle=True
-				)
-
-				st.write(f"Train Data: {train_df.shape} | Validation Data: {eval_df.shape}")
-
-
-				st.session_state.data_state = [train_df, eval_df]
-
-
-
-			
