@@ -15,7 +15,7 @@ from sklearn.model_selection import train_test_split
 
 # Data Management
 class Data:
-	@st.cache_data
+	# @st.cache_data
 	def __init__(self, path, subset: list):
 		self.__data = pd.read_csv(
 			path,
@@ -60,11 +60,17 @@ class Data:
 
 	def get_data(self):
 		return self.__data
+	
+	def get_shape(self):
+		return self.__data.shape
+	
+	def get_columns(self):
+		return list(self.__data.columns)
 
 
 # Models
 class Model:
-	@st.cache_data
+	# @st.cache_data
 	def __init__(self, path: str, train: bool=False, args: dict={}, cuda: bool = False):
 		if train:
 			self.__model = T5Model(
@@ -106,10 +112,10 @@ if __name__ == '__main__':
 	# Session state
 	if "load_state" not in st.session_state:
 		st.session_state.load_state = False
+	
+	if "model_state" not in st.session_state:
+		st.session_state.model_state = False
 
-	# Init global variable
-	model = None
-	file = None
 
 	st.header("Frasakan")
 	MODEL_PATH = config('MODEL_PATH')
@@ -118,11 +124,6 @@ if __name__ == '__main__':
 
 	tab_master1, tab_master2 = st.tabs(["Modelling", "Data Processing"])
 
-
-	# Sidebar
-	with st.sidebar:
-		st.header("Import Files")
-		file = st.file_uploader("Upload CSV file required")
 		
 	with st.container():
 
@@ -151,18 +152,19 @@ if __name__ == '__main__':
 					st.json(json_args)
 				
 					# Init Model
-					model = Model(
-						option,
-						train=True,
-						args=json_args,
-						cuda=True
-					)
+					if not st.session_state.model_state:
+						st.session_state.model_state = model = Model(
+							option,
+							train=True,
+							args=json_args,
+							cuda=True
+						)
 
-					# Train Model
-					# evaluation = model.train()
-					# st.write(
-					# 	evaluation
-					# )
+						# Train Model
+						# evaluation = model.train()
+						# st.write(
+						# 	evaluation
+						# )
 
 			
 
@@ -172,17 +174,20 @@ if __name__ == '__main__':
 				# Input informal text
 				txt = st.text_area('Input informal text for conversion')
 
-				if not model:
-					model = Model(option)
+				if not st.session_state.model_state:
+					st.session_state.model_state = Model(option)
 
 				# Call model 
 				if st.button('Convert') or st.session_state.load_state:
 					st.session_state.load_state = True
+
+					if model:
+						st.write(
+							'Converter:', 
+							st.session_state.model_state.predict(txt)
+						)
 					
-					st.write(
-						'Converter:', 
-						model.predict(txt)
-					)
+					st.warning('Model is not initiated', icon="⚠️")
 		
 
 		with tab_master2:
@@ -198,17 +203,44 @@ if __name__ == '__main__':
 					["Kalimat","Formal Sentences"]
 				)
 
-				df.preprocessing_null_duplication(["Kalimat"])
+				st.write(f"Dataframe Columns: {df.get_columns()}")
+
+				# Request for subset of cols for duplication drop
+				preps = st.checkbox("Duplication Drop ", key="preps")
+				if "preps" in st.session_state:
+					cols = st.text_input(
+						"Input columns ends with ',' e.g. Kalimat,Formal Sentences",
+						key="subset_cols"
+					)
+
+					if "subset_cols" in st.session_state:
+						df.preprocessing_null_duplication(cols.split(','))
+				
+				# Output shape
+				st.write(f"Data dimension: {df.get_shape()}")
+				st.write(f"Null & Duplication Deletion: {df.get_shape()}")
+
 				df.reformat_data("informal converter")
 				df = df.get_data()
 
 				st.dataframe(df)
 
+
+				test_size = st.slider('Test Size: ', 0, 100, 1) / 100
+
+
 				train_df, eval_df = train_test_split(
 					df,
-					test_size=0.2,
+					test_size=test_size,
 					random_state=1000,
 					shuffle=True
 				)
+
+				st.write(f"Train Data: {train_df.shape} | Validation Data: {eval_df.shape}")
+
+
+				st.session_state.data_state = [train_df, eval_df]
+
+
 
 			
