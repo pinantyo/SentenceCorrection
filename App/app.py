@@ -96,7 +96,7 @@ class Model:
 			return_tensors="pt"
 		).input_ids
 
-		output = self.__model.generate(inputs)
+		output = self.__model.generate(inputs, max_length=128)
 
 		return self.__tokenizer.decode(
 			output[0],
@@ -118,94 +118,28 @@ if __name__ == '__main__':
 	st.header("Frasakan")
 	MODEL_PATH = config('MODEL_PATH')
 
-
-
-	tab_master1, tab_master2 = st.tabs(["Modelling", "Data Processing"])
-
-		
+	
 	with st.container():
+		st.header("Modelling")
 
-		with tab_master1:
-			st.header("Modelling")
-
-			# Select Models
-			option = os.path.join(MODEL_PATH, st.selectbox(
-				'Choose machine learning model',
-				set(
-					os.listdir(MODEL_PATH)
-				)
-			))
+		# Select Models
+		option = os.path.join(MODEL_PATH, st.selectbox(
+			'Choose machine learning model',
+			set(
+				os.listdir(MODEL_PATH)
+			)
+		))
 
 
-			# Section Training/Testing
-			tabs1, tabs2 = st.tabs(["Train/Validation", "Test"])
-			with tabs1:
-				st.header("Training")
+		# Section Training/Testing
+		tabs1, tabs2 = st.tabs(["Train/Validation", "Test"])
+		with tabs1:
+			st.header("Training")
 
-				# Import JSON Model Args
-				json_args = json_args = os.path.join(
-					option,
-					"model_args.json"
-				)
+			tabs1_1, tabs1_2 = st.tabs(["Data Processing","Model"])
 
-				if json_args:
-					with open(json_args, 'r') as f:
-						json_args = st.text_area('Model Args' ,str(json.load(f)))
-						json_args = ast.literal_eval(f"{json_args}")
-				
 
-				st.json(ast.literal_eval(f"{json_args}"))
-				
-			
-				if st.button("Train"):
-					# Train Model
-
-					if "data_state" in st.session_state:
-						# Init Model
-						model = Model(
-							option,
-							train=True,
-							args=ast.literal_eval(f"{json_args}"),
-							cuda=False
-						)
-
-						model.train(
-							st.session_state.data_state[0], 
-							eval_data=st.session_state.data_state[1]
-						)
-
-						st.write(
-							f"ModelEvaluation: {model.eval_model(st.session_state.data_state[1])}"
-						)
-
-					else:
-						st.warning('Data Not Found', icon="⚠️")
-
-			
-
-			with tabs2:
-				st.header("Testing")
-
-				# Input informal text
-				txt = st.text_area('Input informal text for conversion')
-
-				if ("model_state" not in st.session_state) or (st.session_state.model_name != option):
-					st.session_state.model_name = option
-					st.session_state.model_state = Model(option)
-
-				# Call model 
-				if st.button('Convert') or st.session_state.load_state:
-					st.session_state.load_state = True
-
-		
-					st.write(
-						'Converter:', 
-						st.session_state.model_state.predict(txt)
-					)
-			
-
-			with tab_master2:
-				st.header("Data Processing")
+			with tabs1_1:
 
 				# Import Data for Training & Testing
 				file = st.file_uploader("Upload CSV file", type=['csv'], key="csv_training")
@@ -254,6 +188,69 @@ if __name__ == '__main__':
 
 
 					st.session_state.data_state = [train_df, eval_df]
+
+
+			with tabs1_2:
+				# Import JSON Model Args
+				json_args = json_args = os.path.join(
+					option,
+					"model_args.json"
+				)
+
+				if json_args:
+					with open(json_args, 'r') as f:
+						json_args = st.text_area('Model Args' ,str(json.load(f)))
+						json_args = ast.literal_eval(f"{json_args}")
+				
+
+				st.json(ast.literal_eval(f"{json_args}"))
+				
+			
+				if st.button("Train"):
+					# Train Model
+
+					if "data_state" in st.session_state:
+						# Init Model
+						model = Model(
+							option,
+							train=True,
+							args=ast.literal_eval(f"{json_args}"),
+							cuda=False
+						)
+
+						model.train(
+							st.session_state.data_state[0], 
+							eval_data=st.session_state.data_state[1]
+						)
+
+						st.write(
+							f"ModelEvaluation: {model.eval_model(st.session_state.data_state[1])}"
+						)
+
+					else:
+						st.warning('Data Not Found', icon="⚠️")
+
+		
+
+		with tabs2:
+			st.header("Testing")
+
+			# Input informal text
+			txt = st.text_area('Input informal text for conversion')
+
+			if ("model_state" not in st.session_state) or (st.session_state.model_name != option):
+				st.session_state.model_name = option
+				st.session_state.model_state = Model(option)
+
+			# Call model 
+			if st.button('Convert') or st.session_state.load_state:
+				st.session_state.load_state = True
+
+	
+				st.write(
+					'Converter:', 
+					st.session_state.model_state.predict(txt)
+				)
 
 
 
